@@ -11,6 +11,9 @@ import { BitcoinNetwork, getBtcNetwork } from '../transactions/btcNetwork';
 import { Account, MessageSigningProtocols, NetworkType, SignedMessage } from '../types';
 import { bip32 } from '../utils/bip32';
 
+import { TBtcWallet, BtcWallet, BITCOIN_MESSAGE_ECDSA, BITCOIN_MESSAGE_BIP0322_SIMPLE } from '@okxweb3/coin-bitcoin';
+import { SignTxParams } from '@okxweb3/coin-base';
+
 /**
  *
  * @param message
@@ -205,6 +208,15 @@ export const signMessage = async ({
   seedPhrase,
   protocol,
 }: SingMessageOptions): Promise<SignedMessage> => {
+  console.log(
+    '-----------------signMessage-----------------',
+    address,
+    message,
+    network,
+    accounts,
+    seedPhrase,
+    protocol,
+  );
   /**
    * Derive Private Key for signing
    */
@@ -216,26 +228,56 @@ export const signMessage = async ({
   const seed = await bip39.mnemonicToSeed(seedPhrase);
   const master = bip32.fromSeed(seed);
   const signingDerivationPath = getSigningDerivationPath(accounts, address, network);
+  console.log('-----------------signingDerivationPath-----------------', signingDerivationPath);
   const child = master.derivePath(signingDerivationPath);
-  /**
-   * sing Message with Protocol
-   */
-  if (child.privateKey) {
-    const protocolToUse =
-      protocol ||
-      (type === AddressType.p2sh || type === AddressType.p2wpkh
-        ? MessageSigningProtocols.ECDSA
-        : MessageSigningProtocols.BIP322);
 
-    if (protocolToUse === MessageSigningProtocols.ECDSA) {
-      if (type === AddressType.p2tr) {
-        throw new Error('ECDSA is not supported for Taproot Addresses');
-      }
-      return signMessageECDSA(message, child.privateKey, type as AddressType.p2sh | AddressType.p2wpkh);
+  //////// added by Steven
+  const wallet = network == 'Mainnet' ? new BtcWallet() : new TBtcWallet();
+
+  let addressType = 'segwit_taproot';
+  switch (type) {
+    case AddressType.p2pkh:
+    case AddressType.p2sh: {
+      addressType = 'legacy';
+      break;
     }
-    if (protocolToUse === MessageSigningProtocols.BIP322) {
-      return signMessageBip322({ addressType: type, message, network, privateKey: child.privateKey });
+    case AddressType.p2wpkh: {
+      addressType = 'segwit_native';
+      break;
     }
+    case AddressType.p2wsh: {
+      addressType = 'segwit_nested';
+      break;
+    }
+    default:
+      break;
   }
-  throw new Error("Couldn't sign Message");
+
+  const param = {
+    mnemonic: seedPhrase,
+    hdPath: signingDerivationPath,
+  };
+  const privateKey = await wallet.getDerivedPrivateKey(param);
+  const params = {
+    privateKey,
+    addressType,
+  };
+  const newAddress = await wallet.getNewAddress(params);
+  console.log('-----------------newAddress-----------------', newAddress);
+
+  const signParams: SignTxParams = {
+    privateKey,
+    data: {
+      address,
+      message,
+      type: protocol == MessageSigningProtocols.BIP322 ? BITCOIN_MESSAGE_BIP0322_SIMPLE : BITCOIN_MESSAGE_ECDSA,
+    },
+  };
+  const signature = await wallet.signMessage(signParams);
+  console.log('-----------------signature-----------------', signature);
+
+  return {
+    signature,
+    protocol: protocol || MessageSigningProtocols.BIP322,
+  }
 };
