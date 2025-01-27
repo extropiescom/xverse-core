@@ -161,6 +161,29 @@ export async function createNativeSegwitECDSA({
   };
 }
 
+export async function createTaprootECDSA({
+  transport,
+  networkType,
+  message,
+  addressIndex,
+}: {
+  transport: Transport;
+  networkType: NetworkType;
+  message: string;
+  addressIndex: number;
+}): Promise<SignedMessage> {
+  const app = new AppClient(transport);
+  const coinType = getCoinType(networkType);
+  const signature = await app.signMessage(
+    Buffer.from(message),
+    `${BTC_TAPROOT_PATH_PURPOSE}${coinType}'/0'/0/${addressIndex}`,
+  );
+  return {
+    signature,
+    protocol: MessageSigningProtocols.ECDSA,
+  };
+}
+
 /**
  * This function is used to sign an incoming BIP 322 message with the ledger
  * @param transport - the transport object with connected ledger device
@@ -191,7 +214,8 @@ export async function signMessageLedger({
   const protocolToSign = protocol || MessageSigningProtocols.BIP322;
   if (protocolToSign === MessageSigningProtocols.ECDSA) {
     if (type === AddressType.p2tr) {
-      throw new Error('ECDSA is not supported for Taproot Addresses');
+      // throw new Error('ECDSA is not supported for Taproot Addresses');
+      return createTaprootECDSA({ transport, networkType, message, addressIndex })
     }
     return createNativeSegwitECDSA({ transport, networkType, message, addressIndex });
   }
