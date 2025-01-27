@@ -200,36 +200,33 @@ interface SingMessageOptions {
   protocol?: MessageSigningProtocols;
 }
 
-export const signMessage = async ({
+export const mockSignMessage = async ({
   address,
   message,
   network,
-  accounts,
   seedPhrase,
   protocol,
-}: SingMessageOptions): Promise<SignedMessage> => {
+  derivationPath,
+}: {
+  address: string;
+  message: string;
+  network: NetworkType;
+  seedPhrase: string;
+  protocol?: MessageSigningProtocols;
+  derivationPath: string;
+}): Promise<SignedMessage> => {
   console.log(
     '-----------------signMessage-----------------',
     address,
     message,
     network,
-    accounts,
     seedPhrase,
+    derivationPath,
     protocol,
   );
-  /**
-   * Derive Private Key for signing
-   */
-  if (!accounts?.length) {
-    throw new Error('a List of Accounts are required to derive the correct Private Key');
-  }
+
   // TODO: switch to btc.Address.decode
   const { type } = getAddressInfo(address);
-  const seed = await bip39.mnemonicToSeed(seedPhrase);
-  const master = bip32.fromSeed(seed);
-  const signingDerivationPath = getSigningDerivationPath(accounts, address, network);
-  console.log('-----------------signingDerivationPath-----------------', signingDerivationPath);
-  const child = master.derivePath(signingDerivationPath);
 
   //////// added by Steven
   const wallet = network == 'Mainnet' ? new BtcWallet() : new TBtcWallet();
@@ -255,7 +252,7 @@ export const signMessage = async ({
 
   const param = {
     mnemonic: seedPhrase,
-    hdPath: signingDerivationPath,
+    hdPath: derivationPath,
   };
   const privateKey = await wallet.getDerivedPrivateKey(param);
   const params = {
@@ -279,5 +276,25 @@ export const signMessage = async ({
   return {
     signature,
     protocol: protocol || MessageSigningProtocols.BIP322,
+  };
+};
+
+export const signMessage = async ({
+  address,
+  message,
+  network,
+  accounts,
+  seedPhrase,
+  protocol,
+}: SingMessageOptions): Promise<SignedMessage> => {
+  /**
+   * Derive Private Key for signing
+   */
+  if (!accounts?.length) {
+    throw new Error('a List of Accounts are required to derive the correct Private Key');
   }
+
+  const signingDerivationPath = getSigningDerivationPath(accounts, address, network);
+
+  return mockSignMessage({ address, message, network, seedPhrase, protocol, derivationPath: signingDerivationPath });
 };
