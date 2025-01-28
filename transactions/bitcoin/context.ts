@@ -17,6 +17,9 @@ import { ExtendedUtxo } from './extendedUtxo';
 import { CompilationOptions, SupportedAddressType } from './types';
 import { areByteArraysEqual } from './utils';
 
+import { TBtcWallet, BtcWallet } from '@okxweb3/coin-bitcoin';
+import { SignTxParams } from '@okxweb3/coin-base';
+
 export type InputToSign = {
   address: string;
   signingIndexes: Array<number>;
@@ -443,6 +446,8 @@ export class LedgerP2wpkhAddressContext extends P2wpkhAddressContext {
 export class P2trAddressContext extends AddressContext {
   protected _p2tr!: ReturnType<typeof btc.p2tr>;
 
+  protected _wallet!: BtcWallet;
+
   constructor(
     address: string,
     publicKey: string,
@@ -454,6 +459,8 @@ export class P2trAddressContext extends AddressContext {
   ) {
     super('p2tr', address, publicKey, network, accountIndex, seedVault, utxoCache, esploraApiProvider);
     const publicKeyBuff = hex.decode(publicKey);
+
+    this._wallet = network == 'Mainnet' ? new BtcWallet() : new TBtcWallet();
 
     try {
       this._p2tr = btc.p2tr(publicKeyBuff, undefined, getBtcNetworkDefinition(network));
@@ -509,6 +516,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     const utxoTxnHex = await extendedUtxo.hex;
 
     if (utxoTxnHex) {
+      console.log('-------------------LedgerP2trAddressContext.addInput utxoTxnHex-------------------', transaction.hex);
       const nonWitnessUtxo = Buffer.from(utxoTxnHex, 'hex');
 
       transaction.updateInput(transaction.inputsLength - 1, {
@@ -561,6 +569,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
   }
 
   async signInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
+    console.log('-------------------LedgerP2trAddressContext.signInputs-------------------', transaction.unsignedTx);
     const signIndexes = this.getSignIndexes(transaction, options, this._p2tr.script);
 
     if (Object.keys(signIndexes).length === 0) {
@@ -584,6 +593,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
 
     const psbt = transaction.toPSBT(0);
     const psbtBase64 = base64.encode(psbt);
+    console.log('psbtBase64 for Ledger', psbtBase64);
     const signatures = await app.signPsbt(psbtBase64, accountPolicy, null);
 
     for (const signature of signatures) {
@@ -718,21 +728,28 @@ export class TransactionContext {
   }
 
   async signTransaction(transaction: btc.Transaction, options: SignOptions): Promise<void> {
-    await this.paymentAddress.prepareInputs(transaction, options);
+    console.log('-------------------TransactionContext.signTransaction start-------------------', transaction.hex);
+    // await this.paymentAddress.prepareInputs(transaction, options);
     await this.ordinalsAddress.prepareInputs(transaction, options);
 
-    await this.paymentAddress.signInputs(transaction, options);
+    // await this.paymentAddress.signInputs(transaction, options);
     await this.ordinalsAddress.signInputs(transaction, options);
+    console.log('-------------------TransactionContext.signTransaction end-------------------');
   }
 
   async signPsbt(psbtBase64: string, options: SignOptions): Promise<string> {
+    console.log('-------------------TransactionContext.signPsbt start-------------------');
+    console.log('options', options);
+
     const txn = btc.Transaction.fromPSBT(Buffer.from(psbtBase64, 'base64'));
+    console.log('txn', txn);
 
     await this.signTransaction(txn, options);
 
     const psbt = txn.toPSBT();
     const psbtBase64Signed = base64.encode(psbt);
 
+    console.log('-------------------TransactionContext.signPsbt end-------------------');
     return psbtBase64Signed;
   }
 }

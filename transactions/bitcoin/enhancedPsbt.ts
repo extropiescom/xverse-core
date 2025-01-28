@@ -50,6 +50,7 @@ export class EnhancedPsbt {
   private readonly _hasSigHashSingle?: boolean;
 
   constructor(context: TransactionContext, psbtBase64: string, inputsToSign?: InputToSign[]) {
+    console.log('------------------EnhancedPsbt.constructor------------------', psbtBase64, inputsToSign);
     this._context = context;
     this._psbt = base64.decode(psbtBase64);
 
