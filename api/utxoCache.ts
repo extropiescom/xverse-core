@@ -277,18 +277,19 @@ export class UtxoCache {
     txid: string,
     vout: number,
   ): Promise<[xVersion: number, bundle: UtxoOrdinalBundle] | [undefined, undefined]> => {
-    try {
-      const apiBundleData = await getUtxoOrdinalBundle(this._network, txid, vout);
+    return [undefined, undefined];
+    // try {
+    //   const apiBundleData = await getUtxoOrdinalBundle(this._network, txid, vout);
 
-      const { xVersion, ...utxo } = apiBundleData;
-      return [xVersion, this._mapUtxoApiBundleToBundle(utxo)];
-    } catch (err) {
-      if (isAxiosError(err) && err.response?.status === 404) {
-        return [undefined, undefined];
-      }
+    //   const { xVersion, ...utxo } = apiBundleData;
+    //   return [xVersion, this._mapUtxoApiBundleToBundle(utxo)];
+    // } catch (err) {
+    //   if (isAxiosError(err) && err.response?.status === 404) {
+    //     return [undefined, undefined];
+    //   }
 
-      throw err;
-    }
+    //   throw err;
+    // }
   };
 
   /** This should only be called from the _syncCache function */

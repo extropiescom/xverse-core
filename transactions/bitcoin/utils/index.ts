@@ -176,58 +176,58 @@ export const extractOutputInscriptionsAndSatributes = async (
   const inscriptions: TransactionOutput['inscriptions'] = [];
   const satributes: TransactionOutput['satributes'] = [];
 
-  let runningOffset = 0;
-  for (const input of inputs) {
-    if (runningOffset + input.utxo.value > outputOffset) {
-      const inputBundleData = await input.getBundleData();
-      const fromAddress = input.address;
+  // let runningOffset = 0;
+  // for (const input of inputs) {
+  //   if (runningOffset + input.utxo.value > outputOffset) {
+  //     const inputBundleData = await input.getBundleData();
+  //     const fromAddress = input.address;
 
-      inputBundleData?.sat_ranges.forEach((s) => {
-        s.inscriptions.forEach((i) => {
-          const inscriptionEntry = {
-            id: i.id,
-            offset: runningOffset + s.offset - outputOffset,
-            fromAddress,
-            number: i.inscription_number,
-            contentType: i.content_type,
-          };
+  //     inputBundleData?.sat_ranges.forEach((s) => {
+  //       s.inscriptions.forEach((i) => {
+  //         const inscriptionEntry = {
+  //           id: i.id,
+  //           offset: runningOffset + s.offset - outputOffset,
+  //           fromAddress,
+  //           number: i.inscription_number,
+  //           contentType: i.content_type,
+  //         };
 
-          if (inscriptionEntry.offset >= 0 && inscriptionEntry.offset < outputValue) {
-            inscriptions.push(inscriptionEntry);
-          }
-        });
-      });
+  //         if (inscriptionEntry.offset >= 0 && inscriptionEntry.offset < outputValue) {
+  //           inscriptions.push(inscriptionEntry);
+  //         }
+  //       });
+  //     });
 
-      inputBundleData?.sat_ranges.forEach((s) => {
-        if (s.satributes.length === 0) {
-          return;
-        }
+  //     inputBundleData?.sat_ranges.forEach((s) => {
+  //       if (s.satributes.length === 0) {
+  //         return;
+  //       }
 
-        const min = Math.max(runningOffset + s.offset - outputOffset, 0);
-        const max = Math.min(
-          runningOffset + s.offset + Number(BigInt(s.range.end) - BigInt(s.range.start)) - outputOffset,
-          outputValue,
-        );
+  //       const min = Math.max(runningOffset + s.offset - outputOffset, 0);
+  //       const max = Math.min(
+  //         runningOffset + s.offset + Number(BigInt(s.range.end) - BigInt(s.range.start)) - outputOffset,
+  //         outputValue,
+  //       );
 
-        const satributeEntry = {
-          types: s.satributes,
-          amount: max - min,
-          offset: min,
-          fromAddress,
-        };
+  //       const satributeEntry = {
+  //         types: s.satributes,
+  //         amount: max - min,
+  //         offset: min,
+  //         fromAddress,
+  //       };
 
-        if (satributeEntry.offset >= 0 && satributeEntry.offset < outputValue && satributeEntry.amount > 0) {
-          satributes.push(satributeEntry);
-        }
-      });
-    }
+  //       if (satributeEntry.offset >= 0 && satributeEntry.offset < outputValue && satributeEntry.amount > 0) {
+  //         satributes.push(satributeEntry);
+  //       }
+  //     });
+  //   }
 
-    runningOffset += input.utxo.value;
+  //   runningOffset += input.utxo.value;
 
-    if (runningOffset >= outputOffset + outputValue) {
-      break;
-    }
-  }
+  //   if (runningOffset >= outputOffset + outputValue) {
+  //     break;
+  //   }
+  // }
 
   return { inscriptions, satributes };
 };
@@ -237,35 +237,35 @@ export const mapInputToEnhancedInput = async (
   walletWillSign: boolean,
   sigHash?: SigHash,
 ): Promise<EnhancedInput> => {
-  const bundleData = await input.getBundleData();
+  // const bundleData = await input.getBundleData();
 
-  const inscriptions: IOInscription[] =
-    bundleData?.sat_ranges
-      .filter((r) => r.inscriptions.length > 0)
-      .flatMap((r) =>
-        r.inscriptions.map((i) => ({
-          fromAddress: input.address,
-          id: i.id,
-          offset: r.offset,
-          number: i.inscription_number,
-          contentType: i.content_type,
-        })),
-      ) || [];
-  const satributes: IOSatribute[] =
-    bundleData?.sat_ranges
-      .filter((r) => r.satributes.length > 0)
-      .map((r) => ({
-        fromAddress: input.address,
-        offset: r.offset,
-        types: r.satributes,
-        amount: +r.range.end - +r.range.start,
-      })) || [];
+  // const inscriptions: IOInscription[] =
+  //   bundleData?.sat_ranges
+  //     .filter((r) => r.inscriptions.length > 0)
+  //     .flatMap((r) =>
+  //       r.inscriptions.map((i) => ({
+  //         fromAddress: input.address,
+  //         id: i.id,
+  //         offset: r.offset,
+  //         number: i.inscription_number,
+  //         contentType: i.content_type,
+  //       })),
+  //     ) || [];
+  // const satributes: IOSatribute[] =
+  //   bundleData?.sat_ranges
+  //     .filter((r) => r.satributes.length > 0)
+  //     .map((r) => ({
+  //       fromAddress: input.address,
+  //       offset: r.offset,
+  //       types: r.satributes,
+  //       amount: +r.range.end - +r.range.start,
+  //     })) || [];
 
   return {
     extendedUtxo: input,
     sigHash: sigHash,
-    inscriptions,
-    satributes,
+    inscriptions: [],
+    satributes: [],
     walletWillSign,
   };
 };
