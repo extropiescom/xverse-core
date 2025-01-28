@@ -432,6 +432,10 @@ export class EnhancedPsbt {
       transaction.finalize();
     }
 
-    return base64.encode(transaction.toPSBT());
+    const result = base64.encode(transaction.toPSBT());
+
+    console.log('-------------------getSignedPsbtBase64 result-------------------', result);
+
+    return result;
   }
 }
