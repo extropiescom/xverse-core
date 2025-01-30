@@ -3,7 +3,7 @@ import * as btc from '@scure/btc-signer';
 import { Mutex } from 'async-mutex';
 import { isAxiosError } from 'axios';
 import * as bip39 from 'bip39';
-import AppClient, { DefaultWalletPolicy } from 'ledger-bitcoin';
+import AppClient, { WalletPolicy, DefaultWalletPolicy } from 'ledger-bitcoin';
 import { getNativeSegwitDerivationPath, getNestedSegwitDerivationPath, getTaprootDerivationPath } from '../../account';
 import EsploraProvider from '../../api/esplora/esploraAPiProvider';
 import { UtxoCache } from '../../api/utxoCache';
@@ -490,6 +490,10 @@ export class P2trAddressContext extends AddressContext {
   }
 
   async signInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
+    const psbt = transaction.toPSBT(0);
+    const psbtBase64 = base64.encode(psbt);
+    console.log('psbtBase64 for xverse', psbtBase64);
+
     const seedPhrase = await this._seedVault.getSeed();
     const privateKey = await this.getPrivateKey(seedPhrase);
 
@@ -501,7 +505,9 @@ export class P2trAddressContext extends AddressContext {
   }
 
   protected getDerivationPath(): string {
-    return getTaprootDerivationPath({ index: this._accountIndex, network: this._network });
+    const p = getTaprootDerivationPath({ index: this._accountIndex, network: this._network });
+    console.log('------------------getDerivationPath-------------------', p);
+    return p;
   }
 
   getIOSizes(): { inputSize: number; outputSize: number } {
@@ -516,7 +522,10 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     const utxoTxnHex = await extendedUtxo.hex;
 
     if (utxoTxnHex) {
-      console.log('-------------------LedgerP2trAddressContext.addInput utxoTxnHex-------------------', transaction.hex);
+      console.log(
+        '-------------------LedgerP2trAddressContext.addInput utxoTxnHex-------------------',
+        transaction.hex,
+      );
       const nonWitnessUtxo = Buffer.from(utxoTxnHex, 'hex');
 
       transaction.updateInput(transaction.inputsLength - 1, {
@@ -586,20 +595,35 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     const coinType = this._network === 'Mainnet' ? 0 : 1;
     const extendedPublicKey = await app.getExtendedPubkey(`${BTC_TAPROOT_PATH_PURPOSE}${coinType}'/0'`);
 
-    const accountPolicy = new DefaultWalletPolicy(
-      'tr(@0/**)',
-      `[${masterFingerPrint}/86'/${coinType}'/0']${extendedPublicKey}`,
-    );
+    const accountPolicy = new WalletPolicy('Babylon', 'tr(@0/**,pk(@1/**))', [
+      'tpubD6NzVbkrYhZ4WLczPJWReQycCJdd6YVWXubbVUFnJ5KgU5MDQrD998ZJLSmaB7GVcCnJSDWprxmrGkJ6SvgQC6QAffVpqSvonXmeizXcrkN',
+      "[f5acc2fd/86'/1'/0']tpubDDKYE6BREvDsSWMazgHoyQWiJwYaDDYPbCFjYxN3HFXJP5fokeiK4hwK5tTLBNEDBwrDXn8cQ4v9b2xdW62Xr5yxoQdMu1v6c7UDXYVH27U",
+    ]);
 
     const psbt = transaction.toPSBT(0);
     const psbtBase64 = base64.encode(psbt);
-    console.log('psbtBase64 for Ledger', psbtBase64);
+    console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', this._p2tr.script);
+    console.log('-------------------psbt for ledger-------------------', psbtBase64);
     const signatures = await app.signPsbt(psbtBase64, accountPolicy, null);
 
     for (const signature of signatures) {
-      transaction.updateInput(signature[0], {
-        tapKeySig: signature[1].signature,
-      });
+      const idx = signature[0];
+
+      transaction.updateInput(
+        idx,
+        {
+          tapScriptSig: [
+            [
+              {
+                pubKey: signature[1].pubkey,
+                leafHash: signature[1].tapleafHash!,
+              },
+              signature[1].signature,
+            ],
+          ],
+        },
+        true,
+      );
     }
   }
 }
