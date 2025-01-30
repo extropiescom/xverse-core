@@ -50,6 +50,8 @@ export class EnhancedPsbt {
   private readonly _hasSigHashSingle?: boolean;
 
   constructor(context: TransactionContext, psbtBase64: string, inputsToSign?: InputToSign[]) {
+    psbtBase64 = 'cHNidP8BAH0CAAAAAZUPGfxRcPueN3/UdNQC64mF3lAumoEi9Gv6AgvbdVycAAAAAAD/////AsQJAAAAAAAAFgAUW+EmJNCKK0JAldfAciHDNFDRS/EEpgAAAAAAACJRICyVutUKY9E6qBjfjktoZBga2/RyCoiq+OPBI1ugik2fAAAAAAABAStQwwAAAAAAACJRIEOj7UvRXfRV9er0SUNeReHNqaiqtOoEhmW60JCFUoUyQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCJtgX5iDHD5SbZ6yF5ZRRSk4qMD/f16u7MthJR1dRt6/15ASDcjS+e/wxPTb3gcKSOMw78kItip2ZWjZHmWPKEsyS4eK0gH5MjVzLmTKwzVprRw9vwQTgsO3dPz7BTO5sx1MKna/mtIAruBQmxbbccmZI4pIJ9uUVSaFmxPJVIerRnJTV8mp8lrCARPDoyqdMgtyGQoEoCCg2zl27zaXJnMljpo4o2Tz3DsLogF5Ic8VbMtOc9Qo+ZbtEbJFMT434nyXisTSzCHspGcuS6IDu5PfyLYYh9dx82MOmmPpfLr8/MeFVqR034OjGg74mcuiBAr69HxP+lbehkENjke6ortvBLYE9OokMjc33cP+CS37ogeacf/XHFA+8uL5G8z8j82nlG9GU87w2fPd4geV7zufC6INIfr3jGdRoNOOa9gCi5B/8H6ahppD/IN9az+N/2EZo2uiD1GZ764/KLuCR2Fjp+RYx61EXZv/sGgtENO9sstB+Ojrog+p2ILUX0BgvbgEIYOCjNh1RPHqmXOA5YbKt31f1phze6VpzAARcgUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAAAAA=';
+
     console.log('------------------EnhancedPsbt.constructor------------------', psbtBase64, inputsToSign);
     this._context = context;
     this._psbt = base64.decode(psbtBase64);
@@ -94,6 +96,7 @@ export class EnhancedPsbt {
       this._isSigHashAll = isSigHashAll;
       this._hasSigHashNone = hasSigHashNone;
       this._hasSigHashSingle = hasSigHashSingle;
+      console.log('------------------EnhancedPsbt.constructor------------------', isSigHashAll, hasSigHashNone, hasSigHashSingle);
     }
   }
 
@@ -267,12 +270,15 @@ export class EnhancedPsbt {
   }
 
   async getSummary(options?: GetPSBTSummaryOptions): Promise<PsbtSummary> {
+    console.log('-------------------EnhancedPsbt.getSummary start-------------------');
     const transaction = btc.Transaction.fromPSBT(this._psbt);
 
     const { inputs, inputTotal, isSigHashAll, hasSigHashNone, hasSigHashSingle } = await this._extractInputMetadata(
       transaction,
       options?.knownEmptyTxids,
     );
+    console.log('-------------------EnhancedPsbt.getSummary cp0-------------------');
+
     const outputs: EnhancedOutput[] = [];
 
     let hasScriptOutput = false;
@@ -280,9 +286,11 @@ export class EnhancedPsbt {
     let currentOffset = 0;
     const inputsExtendedUtxos = inputs.map((i) => i.extendedUtxo);
     for (let outputIndex = 0; outputIndex < transaction.outputsLength; outputIndex++) {
+      console.log('-------------------EnhancedPsbt.getSummary for-------------------', outputIndex);
       const outputMetadata = this.parseAddressFromOutput(transaction, outputIndex);
       const outputRaw = transaction.getOutput(outputIndex);
 
+      console.log('-------------------EnhancedPsbt.getSummary for cp0-------------------');
       if (outputMetadata.type === undefined && outputMetadata.address === undefined) {
         outputs.push({
           type: 'script',
@@ -301,6 +309,8 @@ export class EnhancedPsbt {
       let inscriptions: IOInscription[] = [];
       let satributes: IOSatribute[] = [];
 
+      console.log('-------------------EnhancedPsbt.getSummary for cp1-------------------');
+
       if (isSigHashAll) {
         if (isInscriptionsAndRunesCompatible(this._context.network)) {
           const extractedAssets = await extractOutputInscriptionsAndSatributes(
@@ -313,6 +323,8 @@ export class EnhancedPsbt {
           satributes = extractedAssets.satributes;
         }
       }
+
+      console.log('-------------------EnhancedPsbt.getSummary for cp2-------------------');
 
       if (outputMetadata.address !== undefined) {
         outputs.push({
@@ -340,6 +352,8 @@ export class EnhancedPsbt {
       currentOffset += Number(amount);
     }
 
+    console.log('-------------------EnhancedPsbt.getSummary cp1-------------------');
+
     const fee = isSigHashAll ? inputTotal - outputTotal : undefined;
     let feeOutput: TransactionFeeOutput | undefined = undefined;
 
@@ -358,6 +372,8 @@ export class EnhancedPsbt {
       };
     }
 
+    console.log('-------------------EnhancedPsbt.getSummary cp2-------------------');
+
     const enhancedInputs: EnhancedInput[] = await Promise.all(
       inputs.map((input, idx) =>
         mapInputToEnhancedInput(
@@ -368,8 +384,12 @@ export class EnhancedPsbt {
       ),
     );
 
+    console.log('-------------------EnhancedPsbt.getSummary cp3-------------------');
+
     const runesClient = getRunesClient(this._context.network);
     const runeOp = hasScriptOutput ? await runesClient.getDecodedRuneScript(transaction.hex) : undefined;
+
+    console.log('-------------------EnhancedPsbt.getSummary cp4-------------------');
 
     const isFinal = isSigHashAll;
     let feeRate: number | undefined = undefined;
@@ -383,6 +403,8 @@ export class EnhancedPsbt {
         // if we can't estimate the size, we can't calculate the fee rate, so we just ignore it
       }
     }
+
+    console.log('-------------------EnhancedPsbt.getSummary end-------------------');
 
     return {
       inputs: enhancedInputs,
