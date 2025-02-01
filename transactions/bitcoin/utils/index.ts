@@ -6,6 +6,11 @@ import { ExtendedDummyUtxo, ExtendedUtxo } from '../extendedUtxo';
 import { Action, ActionMap, ActionType, EnhancedInput, IOInscription, IOSatribute, TransactionOutput } from '../types';
 import { estimateVSize } from './transactionVsizeEstimator';
 
+import { createExtendedPubkey } from './xpub';
+import { getTaprootScript, getLeafHash } from './psbt';
+
+export { createExtendedPubkey, getTaprootScript, getLeafHash };
+
 export const areByteArraysEqual = (a?: Uint8Array, b?: Uint8Array): boolean => {
   if (!a || !b || a.length !== b.length) {
     return false;
