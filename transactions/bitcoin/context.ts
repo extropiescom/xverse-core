@@ -534,48 +534,48 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     }
   }
 
-  async prepareInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
-    const { ledgerTransport } = options;
-    if (!ledgerTransport) {
-      throw new Error('Transport is required for Ledger signing');
-    }
+  // async prepareInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
+  //   const { ledgerTransport } = options;
+  //   if (!ledgerTransport) {
+  //     throw new Error('Transport is required for Ledger signing');
+  //   }
 
-    const app = new AppClient(ledgerTransport);
-    const masterFingerPrint = await app.getMasterFingerprint();
+  //   const app = new AppClient(ledgerTransport);
+  //   const masterFingerPrint = await app.getMasterFingerprint();
 
-    const inputDerivation = [
-      this._p2tr.tapInternalKey,
-      {
-        hashes: [],
-        der: {
-          path: btc.bip32Path(this.getDerivationPath()),
-          fingerprint: parseInt(masterFingerPrint, 16),
-        },
-      },
-    ] as [
-      Uint8Array,
-      {
-        hashes: Uint8Array[];
-        der: {
-          fingerprint: any;
-          path: any;
-        };
-      },
-    ];
+  //   const inputDerivation = [
+  //     this._p2tr.tapInternalKey,
+  //     {
+  //       hashes: [],
+  //       der: {
+  //         path: btc.bip32Path(this.getDerivationPath()),
+  //         fingerprint: parseInt(masterFingerPrint, 16),
+  //       },
+  //     },
+  //   ] as [
+  //     Uint8Array,
+  //     {
+  //       hashes: Uint8Array[];
+  //       der: {
+  //         fingerprint: any;
+  //         path: any;
+  //       };
+  //     },
+  //   ];
 
-    const signIndexes = this.getSignIndexes(transaction, options, this._p2tr.script);
+  //   const signIndexes = this.getSignIndexes(transaction, options, this._p2tr.script);
 
-    for (const i of Object.keys(signIndexes)) {
-      const input = transaction.getInput(+i);
-      if (input.bip32Derivation?.some((derivation) => areByteArraysEqual(derivation[0], inputDerivation[0]))) {
-        continue;
-      }
+  //   for (const i of Object.keys(signIndexes)) {
+  //     const input = transaction.getInput(+i);
+  //     if (input.bip32Derivation?.some((derivation) => areByteArraysEqual(derivation[0], inputDerivation[0]))) {
+  //       continue;
+  //     }
 
-      transaction.updateInput(+i, {
-        tapBip32Derivation: [inputDerivation],
-      });
-    }
-  }
+  //     transaction.updateInput(+i, {
+  //       tapBip32Derivation: [inputDerivation],
+  //     });
+  //   }
+  // }
 
   async signInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
     console.log('-------------------LedgerP2trAddressContext.signInputs-------------------', transaction.unsignedTx);
