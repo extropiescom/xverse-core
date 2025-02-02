@@ -15,7 +15,7 @@ import { bip32 } from '../../utils/bip32';
 import { getBtcNetwork, getBtcNetworkDefinition } from '../btcNetwork';
 import { ExtendedUtxo } from './extendedUtxo';
 import { CompilationOptions, SupportedAddressType } from './types';
-import { areByteArraysEqual } from './utils';
+import { areByteArraysEqual, createExtendedPubkey, getTaprootScript, getLeafHash } from './utils';
 
 import { TBtcWallet, BtcWallet } from '@okxweb3/coin-bitcoin';
 import { SignTxParams } from '@okxweb3/coin-base';
@@ -534,49 +534,6 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     }
   }
 
-  // async prepareInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
-  //   const { ledgerTransport } = options;
-  //   if (!ledgerTransport) {
-  //     throw new Error('Transport is required for Ledger signing');
-  //   }
-
-  //   const app = new AppClient(ledgerTransport);
-  //   const masterFingerPrint = await app.getMasterFingerprint();
-
-  //   const inputDerivation = [
-  //     this._p2tr.tapInternalKey,
-  //     {
-  //       hashes: [],
-  //       der: {
-  //         path: btc.bip32Path(this.getDerivationPath()),
-  //         fingerprint: parseInt(masterFingerPrint, 16),
-  //       },
-  //     },
-  //   ] as [
-  //     Uint8Array,
-  //     {
-  //       hashes: Uint8Array[];
-  //       der: {
-  //         fingerprint: any;
-  //         path: any;
-  //       };
-  //     },
-  //   ];
-
-  //   const signIndexes = this.getSignIndexes(transaction, options, this._p2tr.script);
-
-  //   for (const i of Object.keys(signIndexes)) {
-  //     const input = transaction.getInput(+i);
-  //     if (input.bip32Derivation?.some((derivation) => areByteArraysEqual(derivation[0], inputDerivation[0]))) {
-  //       continue;
-  //     }
-
-  //     transaction.updateInput(+i, {
-  //       tapBip32Derivation: [inputDerivation],
-  //     });
-  //   }
-  // }
-
   async signInputs(transaction: btc.Transaction, options: SignOptions): Promise<void> {
     console.log('-------------------LedgerP2trAddressContext.signInputs-------------------', transaction.unsignedTx);
     const signIndexes = this.getSignIndexes(transaction, options, this._p2tr.script);
@@ -593,37 +550,76 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     const app = new AppClient(ledgerTransport);
     const masterFingerPrint = await app.getMasterFingerprint();
     const coinType = this._network === 'Mainnet' ? 0 : 1;
-    const extendedPublicKey = await app.getExtendedPubkey(`${BTC_TAPROOT_PATH_PURPOSE}${coinType}'/0'`);
-
-    const accountPolicy = new WalletPolicy('Babylon', 'tr(@0/**,pk(@1/**))', [
-      'tpubD6NzVbkrYhZ4WLczPJWReQycCJdd6YVWXubbVUFnJ5KgU5MDQrD998ZJLSmaB7GVcCnJSDWprxmrGkJ6SvgQC6QAffVpqSvonXmeizXcrkN',
-      "[f5acc2fd/86'/1'/0']tpubDDKYE6BREvDsSWMazgHoyQWiJwYaDDYPbCFjYxN3HFXJP5fokeiK4hwK5tTLBNEDBwrDXn8cQ4v9b2xdW62Xr5yxoQdMu1v6c7UDXYVH27U",
-    ]);
-
+    const derivationPath = `${BTC_TAPROOT_PATH_PURPOSE}${coinType}'/0'`;
+    const extendedPublicKey = await app.getExtendedPubkey(derivationPath);
     const psbt = transaction.toPSBT(0);
     const psbtBase64 = base64.encode(psbt);
+    console.log(
+      '-------------------LedgerP2trAddressContext.signInputs masterFingerPrint-------------------',
+      masterFingerPrint,
+      extendedPublicKey,
+    );
+    console.log('----psbtBase64.length=', psbtBase64.length);
+
+    let accountPolicy;
+    if (psbtBase64.length > 400) {
+      const script = getTaprootScript(psbtBase64)!;
+      console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', script.toString('hex'));
+
+      const leafHash = getLeafHash(script);
+      console.log('-------------------LedgerP2trAddressContext.signInputs leafHash-------------------', leafHash.toString('hex'));
+
+      const leafHashT = createExtendedPubkey(
+        this._network === 'Mainnet' ? 'Mainnet' : 'Testnet',
+        0,
+        Buffer.from('00000000', 'hex'),
+        0,
+        Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
+        Buffer.concat([Buffer.from('02', 'hex'), leafHash]),
+      );
+      console.log('-------------------LedgerP2trAddressContext.signInputs leafHashT-------------------', leafHashT);
+
+      accountPolicy = new WalletPolicy('Output Slashing', 'tr(@0/**,pk(@1/**))', [
+        // 'tpubD6NzVbkrYhZ4WNLDZARxRfzGzvp9Lnm88oGRLmoTSPWNg3uuE6F4xBdmcEqUxs2ovExCUqFBjvF8QkjawKp1KRp6wtFDptzPbBPwQ9LMeY1',
+        leafHashT,
+        `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
+      ]);
+    } else {
+      accountPolicy = new WalletPolicy('Stake Transfer', 'tr(@0/**)', [
+        `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
+      ]);
+    }
     console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', this._p2tr.script);
     console.log('-------------------psbt for ledger-------------------', psbtBase64);
     const signatures = await app.signPsbt(psbtBase64, accountPolicy, null);
-
+    console.log('signatures=', signatures);
     for (const signature of signatures) {
       const idx = signature[0];
-
-      transaction.updateInput(
-        idx,
-        {
-          tapScriptSig: [
-            [
-              {
-                pubKey: signature[1].pubkey,
-                leafHash: signature[1].tapleafHash!,
-              },
-              signature[1].signature,
+      if (psbtBase64.length > 400) {
+        transaction.updateInput(
+          idx,
+          {
+            tapScriptSig: [
+              [
+                {
+                  pubKey: signature[1].pubkey,
+                  leafHash: signature[1].tapleafHash!,
+                },
+                signature[1].signature,
+              ],
             ],
-          ],
-        },
-        true,
-      );
+          },
+          true,
+        );
+      } else {
+        transaction.updateInput(
+          idx,
+          {
+            tapKeySig: signature[1].signature,
+          },
+          true,
+        );
+      }
     }
   }
 }
