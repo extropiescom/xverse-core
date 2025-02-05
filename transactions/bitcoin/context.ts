@@ -561,9 +561,10 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     );
     console.log('----psbtBase64.length=', psbtBase64.length);
 
+    const script = getTaprootScript(psbtBase64)!;
+
     let accountPolicy;
-    if (psbtBase64.length > 400) {
-      const script = getTaprootScript(psbtBase64)!;
+    if (!!script) {
       console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', script.toString('hex'));
 
       const leafHash = getLeafHash(script);
@@ -589,13 +590,16 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
         `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
       ]);
     }
+
     console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', this._p2tr.script);
     console.log('-------------------psbt for ledger-------------------', psbtBase64);
+
     const signatures = await app.signPsbt(psbtBase64, accountPolicy, null);
     console.log('signatures=', signatures);
+
     for (const signature of signatures) {
       const idx = signature[0];
-      if (psbtBase64.length > 400) {
+      if (!!script) {
         transaction.updateInput(
           idx,
           {
