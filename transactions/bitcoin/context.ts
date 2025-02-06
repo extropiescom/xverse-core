@@ -561,7 +561,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
     );
     console.log('----psbtBase64.length=', psbtBase64.length);
 
-    const script = getTaprootScript(psbtBase64)!;
+    const script = getTaprootScript(psbtBase64);
 
     let accountPolicy;
     if (!!script) {
