@@ -1,9 +1,15 @@
+/// <reference types="chrome"/>
+import { Script } from '@cmdcode/tapscript';
 import { base64, hex } from '@scure/base';
 import * as btc from '@scure/btc-signer';
 import { Mutex } from 'async-mutex';
 import { isAxiosError } from 'axios';
 import * as bip39 from 'bip39';
 import AppClient, { WalletPolicy, DefaultWalletPolicy } from 'ledger-bitcoin';
+import { TBtcWallet, BtcWallet } from '@okxweb3/coin-bitcoin';
+import { SignTxParams } from '@okxweb3/coin-base';
+import { networks } from 'bitcoinjs-lib';
+
 import { getNativeSegwitDerivationPath, getNestedSegwitDerivationPath, getTaprootDerivationPath } from '../../account';
 import EsploraProvider from '../../api/esplora/esploraAPiProvider';
 import { UtxoCache } from '../../api/utxoCache';
@@ -16,9 +22,7 @@ import { getBtcNetwork, getBtcNetworkDefinition } from '../btcNetwork';
 import { ExtendedUtxo } from './extendedUtxo';
 import { CompilationOptions, SupportedAddressType } from './types';
 import { areByteArraysEqual, createExtendedPubkey, getTaprootScript, getLeafHash } from './utils';
-
-import { TBtcWallet, BtcWallet } from '@okxweb3/coin-bitcoin';
-import { SignTxParams } from '@okxweb3/coin-base';
+import * as example from './example';
 
 export type InputToSign = {
   address: string;
@@ -515,6 +519,130 @@ export class P2trAddressContext extends AddressContext {
   }
 }
 
+const SlashingPathRegexPrefix =
+  /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
+const UnbondingPathRegexPrefix = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
+const TimelockPathRegex = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{1,4}) OP_CHECKSEQUENCEVERIFY$/;
+
+function tryParseSlashingPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  console.log('-------------------tryParseSlashingPath-------------------', script);
+
+  if (!SlashingPathRegexPrefix.test(script)) {
+    return;
+  }
+  console.log('-------------------tryParseSlashingPath cp1-------------------');
+
+  const result: string[] = [];
+  decoded.forEach((value) => {
+    if (/^([a-f0-9]{64})$/.test(value)) {
+      result.push(value);
+    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
+      result.push(value);
+    }
+  });
+
+  console.log('-------------------tryParseSlashingPath result-------------------', result);
+
+  return result;
+}
+
+function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  if (!UnbondingPathRegexPrefix.test(script)) {
+    return;
+  }
+
+  const result: string[] = [];
+  decoded.forEach((value) => {
+    if (/^([a-f0-9]{64})$/.test(value)) {
+      result.push(value);
+    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
+      result.push(value);
+    }
+  });
+
+  return result;
+}
+
+function tryParseTimelockPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  const match = script.match(TimelockPathRegex);
+  if (!match) {
+    return;
+  }
+
+  return [match[1], match[2]];
+}
+
+export async function tryParsePsbt(
+  transport: Transport,
+  psbtBase64: string,
+  leafHash: Buffer,
+  derivationPath: string,
+  isTestnet: boolean,
+): Promise<WalletPolicy | undefined> {
+  console.log('-------------------tryParsePsbt-------------------');
+
+  const script = getTaprootScript(psbtBase64);
+
+  console.log('-------------------tryParsePsbt script-------------------', script);
+
+  if (!script) {
+    return;
+  }
+
+  const decodedScript = Script.decode(script!);
+  console.log('-------------------tryParsePsbt decodedScript-------------------', decodedScript);
+  let parsed = tryParseSlashingPath(decodedScript);
+  if (parsed) {
+    return example.slashingPathPolicy({
+      policyName: 'Stake / Step 1',
+      transport,
+      params: {
+        leafHash,
+        finalityProviderPk: parsed[1],
+        covenantPks: parsed.slice(2, parsed.length - 1),
+        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+
+  parsed = tryParseUnbondingPath(decodedScript);
+  if (parsed) {
+    return example.unbondingPathPolicy({
+      policyName: 'Unbond',
+      transport,
+      params: {
+        leafHash,
+        covenantPks: parsed.slice(1, parsed.length - 1),
+        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+
+  parsed = tryParseTimelockPath(decodedScript);
+  if (parsed) {
+    return example.timelockPathPolicy({
+      policyName: 'Withdraw',
+      transport,
+      params: {
+        leafHash,
+        timelockBlocks: parseInt(parsed[parsed.length - 1], 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+}
+
 export class LedgerP2trAddressContext extends P2trAddressContext {
   async addInput(transaction: btc.Transaction, extendedUtxo: ExtendedUtxo, options?: CompilationOptions) {
     super.addInput(transaction, extendedUtxo, options);
@@ -565,36 +693,51 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
 
     let accountPolicy;
     if (!!script) {
-      console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', script.toString('hex'));
+      const scriptHex = hex.encode(script);
+
+      console.log(
+        '-------------------LedgerP2trAddressContext.signInputs script-------------------',
+        scriptHex,
+        Script.decode(script),
+      );
+      console.log(
+        '-------------------LedgerP2trAddressContext.signInputs publicKey-------------------',
+        this._publicKey,
+      );
 
       const leafHash = getLeafHash(script);
-      console.log('-------------------LedgerP2trAddressContext.signInputs leafHash-------------------', leafHash.toString('hex'));
-
-      const leafHashT = createExtendedPubkey(
-        this._network === 'Mainnet' ? 'Mainnet' : 'Testnet',
-        0,
-        Buffer.from('00000000', 'hex'),
-        0,
-        Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
-        Buffer.concat([Buffer.from('02', 'hex'), leafHash]),
+      accountPolicy = await tryParsePsbt(
+        ledgerTransport,
+        psbtBase64,
+        leafHash,
+        derivationPath,
+        this._network !== 'Mainnet',
       );
-      console.log('-------------------LedgerP2trAddressContext.signInputs leafHashT-------------------', leafHashT);
 
-      accountPolicy = new WalletPolicy('Output Slashing', 'tr(@0/**,pk(@1/**))', [
-        // 'tpubD6NzVbkrYhZ4WNLDZARxRfzGzvp9Lnm88oGRLmoTSPWNg3uuE6F4xBdmcEqUxs2ovExCUqFBjvF8QkjawKp1KRp6wtFDptzPbBPwQ9LMeY1',
-        leafHashT,
-        `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
-      ]);
+      // const leafHashT = createExtendedPubkey(
+      //   this._network === 'Mainnet' ? 'Mainnet' : 'Testnet',
+      //   0,
+      //   Buffer.from('00000000', 'hex'),
+      //   0,
+      //   Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
+      //   Buffer.concat([Buffer.from('02', 'hex'), leafHash]),
+      // );
+      // console.log('-------------------LedgerP2trAddressContext.signInputs leafHashT-------------------', leafHashT);
+
+      // accountPolicy = new WalletPolicy('Output Slashing', 'tr(@0/**,pk(@1/**))', [
+      //   // 'tpubD6NzVbkrYhZ4WNLDZARxRfzGzvp9Lnm88oGRLmoTSPWNg3uuE6F4xBdmcEqUxs2ovExCUqFBjvF8QkjawKp1KRp6wtFDptzPbBPwQ9LMeY1',
+      //   leafHashT,
+      //   `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
+      // ]);
     } else {
       accountPolicy = new WalletPolicy('Stake Transfer', 'tr(@0/**)', [
         `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
       ]);
     }
 
-    console.log('-------------------LedgerP2trAddressContext.signInputs script-------------------', this._p2tr.script);
     console.log('-------------------psbt for ledger-------------------', psbtBase64);
 
-    const signatures = await app.signPsbt(psbtBase64, accountPolicy, null);
+    const signatures = await app.signPsbt(psbtBase64, accountPolicy!, null);
     console.log('signatures=', signatures);
 
     for (const signature of signatures) {
