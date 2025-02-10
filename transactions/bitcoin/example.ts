@@ -143,12 +143,8 @@ export async function slashingPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(
-    `[${derivationPath.replace(
-      'm/',
-      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
-    )}]${_formatKey(leafHash, isTestnet)}`,
-  );
+  const magicFP = displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP;
+  keys.push(`[${derivationPath.replace('m/', `${magicFP}/`)}]` + `${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
   keys.push(
     `[${derivationPath.replace('m/', `${MagicCode.FINALITY_PUB_FP}/`)}]${_formatKey(finalityProviderPk, isTestnet)}`,
@@ -215,12 +211,8 @@ export async function unbondingPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(
-    `[${derivationPath.replace(
-      'm/',
-      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
-    )}]${_formatKey(leafHash, isTestnet)}`,
-  );
+  const magicFP = displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP;
+  keys.push(`[${derivationPath.replace('m/', `${magicFP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   if (covenantThreshold < 1) {
@@ -284,12 +276,8 @@ export async function timelockPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(
-    `[${derivationPath.replace(
-      'm/',
-      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
-    )}]${_formatKey(leafHash, isTestnet)}`,
-  );
+  const magicFP = displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP;
+  keys.push(`[${derivationPath.replace('m/', `${magicFP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   return new WalletPolicy(
