@@ -114,7 +114,7 @@ async function _prepare(transport: Transport, derivationPath: string): Promise<s
   return [masterFingerPrint, extendedPublicKey];
 }
 
-export type SlashingPolicy = 'Stake / Step 1' | 'Stake / Step 2';
+export type SlashingPolicy = undefined | 'Consent to slashing' | 'Stake / Step 1' | 'Stake / Step 2';
 export type SlashingParams = {
   leafHash: Buffer;
   finalityProviderPk: string;
@@ -123,14 +123,14 @@ export type SlashingParams = {
 };
 
 export async function slashingPathPolicy({
-  policyName,
+  policyName = 'Consent to slashing',
   transport,
   params,
   derivationPath,
   displayLeafHash = true,
   isTestnet = false,
 }: {
-  policyName: SlashingPolicy;
+  policyName?: SlashingPolicy;
   transport: Transport;
   params: SlashingParams;
   derivationPath?: string;
@@ -183,7 +183,7 @@ export async function slashingPathPolicy({
   return new WalletPolicy(policyName, descriptorTemplate, keys);
 }
 
-export type UnbondingPolicy = 'Unbond' | undefined;
+export type UnbondingPolicy = undefined | 'Unbond';
 export type UnbondingParams = {
   leafHash: Buffer;
   covenantThreshold: number;
@@ -198,7 +198,7 @@ export async function unbondingPathPolicy({
   displayLeafHash = true,
   isTestnet = false,
 }: {
-  policyName: UnbondingPolicy;
+  policyName?: UnbondingPolicy;
   transport: Transport;
   params: UnbondingParams;
   derivationPath?: string;
@@ -249,7 +249,7 @@ export async function unbondingPathPolicy({
   return new WalletPolicy(policyName, descriptorTemplate, keys);
 }
 
-export type TimelockPolicy = 'Withdraw' | undefined;
+export type TimelockPolicy = undefined | 'Withdraw';
 export type TimelockParams = {
   leafHash: Buffer;
   timelockBlocks: number;
@@ -263,7 +263,7 @@ export async function timelockPathPolicy({
   displayLeafHash = true,
   isTestnet = false,
 }: {
-  policyName: TimelockPolicy;
+  policyName?: TimelockPolicy;
   transport: Transport;
   params: TimelockParams;
   derivationPath?: string;
@@ -294,7 +294,7 @@ export async function stakingTxPolicy({
   isTestnet = false,
 }: {
   transport: Transport;
-  derivationPath: string;
+  derivationPath?: string;
   isTestnet?: boolean;
 }): Promise<WalletPolicy> {
   derivationPath = derivationPath ? derivationPath : `m/86'/${isTestnet ? 1 : 0}'/0'`;

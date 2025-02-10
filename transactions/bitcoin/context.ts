@@ -586,25 +586,19 @@ export async function tryParsePsbt(
   isTestnet = false,
   leafHash?: Buffer,
 ): Promise<WalletPolicy | undefined> {
-  console.log('-------------------tryParsePsbt-------------------');
+  const derivationPath = `m/86'/${isTestnet ? 1 : 0}'/0'`;
 
   const script = getTaprootScript(psbtBase64);
-
-  console.log('-------------------tryParsePsbt script-------------------', script);
-
   if (!script) {
-    return;
+    return example.stakingTxPolicy({ transport, derivationPath, isTestnet });
   }
 
   leafHash = leafHash ? leafHash : example.computeLeafHash(psbtBase64);
-  const derivationPath = `m/86'/${isTestnet ? 1 : 0}'/0'`;
 
   const decodedScript = Script.decode(script!);
-  console.log('-------------------tryParsePsbt decodedScript-------------------', decodedScript);
   let parsed = tryParseSlashingPath(decodedScript);
   if (parsed) {
     return example.slashingPathPolicy({
-      policyName: 'Stake / Step 1',
       transport,
       params: {
         leafHash,
@@ -620,7 +614,6 @@ export async function tryParsePsbt(
   parsed = tryParseUnbondingPath(decodedScript);
   if (parsed) {
     return example.unbondingPathPolicy({
-      policyName: 'Unbond',
       transport,
       params: {
         leafHash,
@@ -635,7 +628,6 @@ export async function tryParsePsbt(
   parsed = tryParseTimelockPath(decodedScript);
   if (parsed) {
     return example.timelockPathPolicy({
-      policyName: 'Withdraw',
       transport,
       params: {
         leafHash,
