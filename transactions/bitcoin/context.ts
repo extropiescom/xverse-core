@@ -549,8 +549,6 @@ function tryParseSlashingPath(decoded: string[]): string[] | undefined {
 }
 
 function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
-  console.log('-------------------tryParseUnbondingPath-------------------');
-
   const script = decoded.join(' ');
 
   if (!UnbondingPathRegexPrefix.test(script)) {
@@ -585,9 +583,8 @@ function tryParseTimelockPath(decoded: string[]): string[] | undefined {
 export async function tryParsePsbt(
   transport: Transport,
   psbtBase64: string,
-  leafHash: Buffer,
-  derivationPath: string,
-  isTestnet: boolean,
+  isTestnet = false,
+  leafHash?: Buffer,
 ): Promise<WalletPolicy | undefined> {
   console.log('-------------------tryParsePsbt-------------------');
 
@@ -598,6 +595,9 @@ export async function tryParsePsbt(
   if (!script) {
     return;
   }
+
+  leafHash = leafHash ? leafHash : example.computeLeafHash(psbtBase64);
+  const derivationPath = `m/86'/${isTestnet ? 1 : 0}'/0'`;
 
   const decodedScript = Script.decode(script!);
   console.log('-------------------tryParsePsbt decodedScript-------------------', decodedScript);
@@ -710,29 +710,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
       );
 
       const leafHash = getLeafHash(script);
-      accountPolicy = await tryParsePsbt(
-        ledgerTransport,
-        psbtBase64,
-        leafHash,
-        derivationPath,
-        this._network !== 'Mainnet',
-      );
-
-      // const leafHashT = createExtendedPubkey(
-      //   this._network === 'Mainnet' ? 'Mainnet' : 'Testnet',
-      //   0,
-      //   Buffer.from('00000000', 'hex'),
-      //   0,
-      //   Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
-      //   Buffer.concat([Buffer.from('02', 'hex'), leafHash]),
-      // );
-      // console.log('-------------------LedgerP2trAddressContext.signInputs leafHashT-------------------', leafHashT);
-
-      // accountPolicy = new WalletPolicy('Output Slashing', 'tr(@0/**,pk(@1/**))', [
-      //   // 'tpubD6NzVbkrYhZ4WNLDZARxRfzGzvp9Lnm88oGRLmoTSPWNg3uuE6F4xBdmcEqUxs2ovExCUqFBjvF8QkjawKp1KRp6wtFDptzPbBPwQ9LMeY1',
-      //   leafHashT,
-      //   `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
-      // ]);
+      accountPolicy = await tryParsePsbt(ledgerTransport, psbtBase64, this._network !== 'Mainnet', leafHash);
     } else {
       accountPolicy = new WalletPolicy('Stake Transfer', 'tr(@0/**)', [
         `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,

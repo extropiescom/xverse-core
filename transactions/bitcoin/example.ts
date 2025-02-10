@@ -88,8 +88,8 @@ export async function signMessageECDSA({
   };
 }
 
-export function computeLeafHash(psbt: Uint8Array): Buffer {
-  const psbtBase64 = base64.encode(psbt);
+export function computeLeafHash(psbt: Uint8Array | string): Buffer {
+  const psbtBase64 = psbt instanceof Uint8Array ? base64.encode(psbt) : psbt;
   const script = getTaprootScript(psbtBase64)!;
   return getLeafHash(script);
 }
@@ -127,19 +127,28 @@ export async function slashingPathPolicy({
   transport,
   params,
   derivationPath,
+  displayLeafHash = true,
   isTestnet = false,
 }: {
   policyName: SlashingPolicy;
   transport: Transport;
   params: SlashingParams;
-  derivationPath: string;
-  isTestnet: boolean;
+  derivationPath?: string;
+  displayLeafHash?: boolean;
+  isTestnet?: boolean;
 }): Promise<WalletPolicy> {
+  derivationPath = derivationPath ? derivationPath : `m/86'/${isTestnet ? 1 : 0}'/0'`;
+
   const { leafHash, finalityProviderPk, covenantThreshold, covenantPks } = params;
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(
+    `[${derivationPath.replace(
+      'm/',
+      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
+    )}]${_formatKey(leafHash, isTestnet)}`,
+  );
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
   keys.push(
     `[${derivationPath.replace('m/', `${MagicCode.FINALITY_PUB_FP}/`)}]${_formatKey(finalityProviderPk, isTestnet)}`,
@@ -189,20 +198,29 @@ export async function unbondingPathPolicy({
   policyName = 'Unbond',
   transport,
   params,
-  derivationPath = `m/86'/0'/0'`,
+  derivationPath,
+  displayLeafHash = true,
   isTestnet = false,
 }: {
   policyName: UnbondingPolicy;
   transport: Transport;
   params: UnbondingParams;
-  derivationPath: string;
-  isTestnet: boolean;
+  derivationPath?: string;
+  displayLeafHash?: boolean;
+  isTestnet?: boolean;
 }): Promise<WalletPolicy> {
+  derivationPath = derivationPath ? derivationPath : `m/86'/${isTestnet ? 1 : 0}'/0'`;
+
   const { leafHash, covenantThreshold, covenantPks } = params;
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(
+    `[${derivationPath.replace(
+      'm/',
+      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
+    )}]${_formatKey(leafHash, isTestnet)}`,
+  );
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   if (covenantThreshold < 1) {
@@ -249,20 +267,29 @@ export async function timelockPathPolicy({
   policyName = 'Withdraw',
   transport,
   params,
-  derivationPath = `m/86'/0'/0'`,
+  derivationPath,
+  displayLeafHash = true,
   isTestnet = false,
 }: {
   policyName: TimelockPolicy;
   transport: Transport;
   params: TimelockParams;
-  derivationPath: string;
-  isTestnet: boolean;
+  derivationPath?: string;
+  displayLeafHash?: boolean;
+  isTestnet?: boolean;
 }): Promise<WalletPolicy> {
+  derivationPath = derivationPath ? derivationPath : `m/86'/${isTestnet ? 1 : 0}'/0'`;
+
   const { leafHash, timelockBlocks } = params;
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(
+    `[${derivationPath.replace(
+      'm/',
+      `${displayLeafHash ? MagicCode.LEAFHASH_DISPLAY_FP : MagicCode.LEAFHASH_CHECK_ONLY_FP}/`,
+    )}]${_formatKey(leafHash, isTestnet)}`,
+  );
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   return new WalletPolicy(
@@ -275,11 +302,15 @@ export async function timelockPathPolicy({
 
 export async function stakingTxPolicy({
   transport,
-  derivationPath = `m/86'/0'/0'`,
+  derivationPath,
+  isTestnet = false,
 }: {
   transport: Transport;
   derivationPath: string;
+  isTestnet?: boolean;
 }): Promise<WalletPolicy> {
+  derivationPath = derivationPath ? derivationPath : `m/86'/${isTestnet ? 1 : 0}'/0'`;
+
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   return new WalletPolicy('Stake / Transfer', 'tr(@0/**)', [
