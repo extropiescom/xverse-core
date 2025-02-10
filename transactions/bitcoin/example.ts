@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import Transport from '@ledgerhq/hw-transport';
 import { base64 } from '@scure/base';
 import { Transaction } from '@scure/btc-signer';
@@ -88,13 +89,14 @@ export function computeLeafHash(psbt: Uint8Array): Buffer {
 }
 
 function _formatKey(key: string | Buffer, isTestnet: boolean): string {
+  const pubkey = key instanceof Buffer ? key : Buffer.from(key as string, 'hex');
   return createExtendedPubkey(
     !isTestnet ? 'Mainnet' : 'Testnet',
     0,
     Buffer.from('00000000', 'hex'),
     0,
-    Buffer.from('0000000000000000000000000000000000000000000000000000000000000000', 'hex'),
-    Buffer.concat([Buffer.from('02', 'hex'), key instanceof Buffer ? key : Buffer.from(key as string, 'hex')]),
+    createHash('sha256').update(pubkey).digest().subarray(0, 32),
+    Buffer.concat([Buffer.from('02', 'hex'), pubkey]),
   );
 }
 
@@ -133,9 +135,9 @@ export async function slashingPathPolicy({
   console.log('-------------------slashingPathPolicy-------------------', params);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `00000000/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
-  keys.push(_formatKey(finalityProviderPk, isTestnet));
+  keys.push(`[${derivationPath.replace('m/', `ff119473/`)}]${_formatKey(finalityProviderPk, isTestnet)}`);
 
   if (covenantThreshold < 1) {
     throw new Error(
@@ -159,17 +161,15 @@ export async function slashingPathPolicy({
     keys.push(_formatKey(pk, isTestnet));
   }
 
-  return new WalletPolicy(
-    policyName,
-    // "tr(@0/**,and_v(pk_k(staker_pk), and_v(pk_k(finalityprovider_pk),multi_a(covenant_threshold, covenant_pk1, ..., covenant_pkn))))"
-    `tr(@0/**,and_v(pk_k(@1/**),and_v(pk_k(@2/**),multi_a(${covenantThreshold}, ${Array.from(
-      { length },
-      (_, index) => index,
-    )
-      .map((n) => `@${3 + n}/**`)
-      .join(',')}))))`,
-    keys,
-  );
+  // "tr(@0/**,and_v(pk_k(staker_pk), and_v(pk_k(finalityprovider_pk),multi_a(covenant_threshold, covenant_pk1, ..., covenant_pkn))))"
+  const descriptorTemplate = `tr(@0/**,and_v(pk_k(@1/**),and_v(pk_k(@2/**),multi_a(${covenantThreshold},${Array.from(
+    { length },
+    (_, index) => index,
+  )
+    .map((n) => `@${3 + n}/**`)
+    .join(',')}))))`;
+
+  return new WalletPolicy(policyName, descriptorTemplate, keys);
 }
 
 export type UnbondingPolicy = 'Unbond' | undefined;
@@ -196,7 +196,7 @@ export async function unbondingPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}/**]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   if (covenantThreshold < 1) {
@@ -222,14 +222,15 @@ export async function unbondingPathPolicy({
     keys.push(_formatKey(pk, isTestnet));
   }
 
-  return new WalletPolicy(
-    policyName,
-    // "tr(@0/**,and_v(pk_k(staker_pk), multi_a(covenant_threshold, covenant_pk1, ..., covenant_pkn)))"
-    `tr(@0/**,and_v(pk_k(@1/**),multi_a(${covenantThreshold}, ${Array.from({ length }, (_, index) => index)
-      .map((n) => `@${2 + n}/**`)
-      .join(', ')})))`,
-    keys,
-  );
+  // "tr(@0/**,and_v(pk_k(staker_pk),multi_a(covenant_threshold, covenant_pk1, ..., covenant_pkn)))"
+  const descriptorTemplate = `tr(@0/**,and_v(pk_k(@1/**),multi_a(${covenantThreshold},${Array.from(
+    { length },
+    (_, index) => index,
+  )
+    .map((n) => `@${2 + n}/**`)
+    .join(',')})))`;
+
+  return new WalletPolicy(policyName, descriptorTemplate, keys);
 }
 
 export type TimelockPolicy = 'Withdraw' | undefined;
@@ -255,13 +256,13 @@ export async function timelockPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}/**]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   return new WalletPolicy(
     policyName,
-    // tr(@0/**,and_v(pk_k(staker_pk), older(timelock_blocks)))
-    `tr(@0/**,and_v(pk_k(@1/**), older(${timelockBlocks})))`,
+    // tr(@0/**,and_v(pk_k(staker_pk),older(timelock_blocks)))
+    `tr(@0/**,and_v(pk_k(@1/**),older(${timelockBlocks})))`,
     keys,
   );
 }

@@ -549,6 +549,8 @@ function tryParseSlashingPath(decoded: string[]): string[] | undefined {
 }
 
 function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
+  console.log('-------------------tryParseUnbondingPath-------------------');
+
   const script = decoded.join(' ');
 
   if (!UnbondingPathRegexPrefix.test(script)) {
@@ -568,6 +570,8 @@ function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
 }
 
 function tryParseTimelockPath(decoded: string[]): string[] | undefined {
+  console.log('-------------------tryParseTimelockPath-------------------');
+
   const script = decoded.join(' ');
 
   const match = script.match(TimelockPathRegex);
