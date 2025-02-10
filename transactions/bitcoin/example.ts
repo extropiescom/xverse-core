@@ -5,6 +5,12 @@ import { Transaction } from '@scure/btc-signer';
 import AppClient, { WalletPolicy } from 'ledger-bitcoin';
 import { createExtendedPubkey, getLeafHash, getTaprootScript } from './utils';
 
+enum MagicCode {
+  LEAFHASH_DISPLAY_FP = '69846d00',
+  LEAFHASH_CHECK_ONLY_FP = '3b9f9680',
+  FINALITY_PUB_FP = 'ff119473',
+}
+
 export async function signPsbt({
   transport,
   psbt,
@@ -132,12 +138,12 @@ export async function slashingPathPolicy({
   const { leafHash, finalityProviderPk, covenantThreshold, covenantPks } = params;
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
-  console.log('-------------------slashingPathPolicy-------------------', params);
-
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
-  keys.push(`[${derivationPath.replace('m/', `ff119473/`)}]${_formatKey(finalityProviderPk, isTestnet)}`);
+  keys.push(
+    `[${derivationPath.replace('m/', `${MagicCode.FINALITY_PUB_FP}/`)}]${_formatKey(finalityProviderPk, isTestnet)}`,
+  );
 
   if (covenantThreshold < 1) {
     throw new Error(
@@ -196,7 +202,7 @@ export async function unbondingPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   if (covenantThreshold < 1) {
@@ -256,7 +262,7 @@ export async function timelockPathPolicy({
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
   const keys: string[] = [];
-  keys.push(`[${derivationPath.replace('m/', `69846d00/`)}]${_formatKey(leafHash, isTestnet)}`);
+  keys.push(`[${derivationPath.replace('m/', `${MagicCode.LEAFHASH_DISPLAY_FP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
   return new WalletPolicy(
