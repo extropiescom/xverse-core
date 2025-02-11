@@ -412,7 +412,7 @@ export async function tryParsePsbt(
       transport,
       params: {
         leafHash,
-        timelockBlocks: parseInt(parsed[parsed.length - 1], 10),
+        timelockBlocks: Number(`0x${parsed[parsed.length - 1]}`),
       },
       derivationPath,
       isTestnet,

@@ -22,7 +22,7 @@ import { getBtcNetwork, getBtcNetworkDefinition } from '../btcNetwork';
 import { ExtendedUtxo } from './extendedUtxo';
 import { CompilationOptions, SupportedAddressType } from './types';
 import { areByteArraysEqual, createExtendedPubkey, getTaprootScript, getLeafHash } from './utils';
-import * as example from './example';
+import { tryParsePsbt } from './example';
 
 export type InputToSign = {
   address: string;
@@ -519,126 +519,6 @@ export class P2trAddressContext extends AddressContext {
   }
 }
 
-const SlashingPathRegexPrefix =
-  /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
-const UnbondingPathRegexPrefix = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
-const TimelockPathRegex = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{1,4}) OP_CHECKSEQUENCEVERIFY$/;
-
-function tryParseSlashingPath(decoded: string[]): string[] | undefined {
-  const script = decoded.join(' ');
-
-  console.log('-------------------tryParseSlashingPath-------------------', script);
-
-  if (!SlashingPathRegexPrefix.test(script)) {
-    return;
-  }
-  console.log('-------------------tryParseSlashingPath cp1-------------------');
-
-  const result: string[] = [];
-  decoded.forEach((value) => {
-    if (/^([a-f0-9]{64})$/.test(value)) {
-      result.push(value);
-    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
-      result.push(value);
-    }
-  });
-
-  console.log('-------------------tryParseSlashingPath result-------------------', result);
-
-  return result;
-}
-
-function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
-  const script = decoded.join(' ');
-
-  if (!UnbondingPathRegexPrefix.test(script)) {
-    return;
-  }
-
-  const result: string[] = [];
-  decoded.forEach((value) => {
-    if (/^([a-f0-9]{64})$/.test(value)) {
-      result.push(value);
-    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
-      result.push(value);
-    }
-  });
-
-  return result;
-}
-
-function tryParseTimelockPath(decoded: string[]): string[] | undefined {
-  console.log('-------------------tryParseTimelockPath-------------------');
-
-  const script = decoded.join(' ');
-
-  const match = script.match(TimelockPathRegex);
-  if (!match) {
-    return;
-  }
-
-  return [match[1], match[2]];
-}
-
-export async function tryParsePsbt(
-  transport: Transport,
-  psbtBase64: string,
-  isTestnet = false,
-  leafHash?: Buffer,
-): Promise<WalletPolicy | undefined> {
-  const derivationPath = `m/86'/${isTestnet ? 1 : 0}'/0'`;
-
-  const script = getTaprootScript(psbtBase64);
-  if (!script) {
-    return example.stakingTxPolicy({ transport, derivationPath, isTestnet });
-  }
-
-  leafHash = leafHash ? leafHash : example.computeLeafHash(psbtBase64);
-
-  const decodedScript = Script.decode(script!);
-  let parsed = tryParseSlashingPath(decodedScript);
-  if (parsed) {
-    return example.slashingPathPolicy({
-      transport,
-      params: {
-        leafHash,
-        finalityProviderPk: parsed[1],
-        covenantPks: parsed.slice(2, parsed.length - 1),
-        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
-      },
-      derivationPath,
-      isTestnet,
-    });
-  }
-
-  parsed = tryParseUnbondingPath(decodedScript);
-  if (parsed) {
-    return example.unbondingPathPolicy({
-      transport,
-      params: {
-        leafHash,
-        covenantPks: parsed.slice(1, parsed.length - 1),
-        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
-      },
-      derivationPath,
-      isTestnet,
-    });
-  }
-
-  parsed = tryParseTimelockPath(decodedScript);
-  if (parsed) {
-    return example.timelockPathPolicy({
-      transport,
-      params: {
-        leafHash,
-        timelockBlocks: parseInt(parsed[parsed.length - 1], 10),
-      },
-      derivationPath,
-      isTestnet,
-    });
-  }
-}
-
 export class LedgerP2trAddressContext extends P2trAddressContext {
   async addInput(transaction: btc.Transaction, extendedUtxo: ExtendedUtxo, options?: CompilationOptions) {
     super.addInput(transaction, extendedUtxo, options);
@@ -701,8 +581,7 @@ export class LedgerP2trAddressContext extends P2trAddressContext {
         this._publicKey,
       );
 
-      const leafHash = getLeafHash(script);
-      accountPolicy = await tryParsePsbt(ledgerTransport, psbtBase64, this._network !== 'Mainnet', leafHash);
+      accountPolicy = await tryParsePsbt(ledgerTransport, psbtBase64, this._network !== 'Mainnet');
     } else {
       accountPolicy = new WalletPolicy('Stake Transfer', 'tr(@0/**)', [
         `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
