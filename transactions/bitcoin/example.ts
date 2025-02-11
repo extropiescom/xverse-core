@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { Script } from '@cmdcode/tapscript';
 import Transport from '@ledgerhq/hw-transport';
 import { base64 } from '@scure/base';
 import { Transaction } from '@scure/btc-signer';
@@ -17,17 +18,17 @@ export async function signPsbt({
   policy,
 }: {
   transport: Transport;
-  psbt: Uint8Array;
+  psbt: Uint8Array | string;
   policy: WalletPolicy;
 }): Promise<Transaction> {
   const app = new AppClient(transport);
 
-  const psbtBase64 = base64.encode(psbt);
+  const psbtBase64 = psbt instanceof Uint8Array ? base64.encode(psbt) : psbt;
   const signatures = await app.signPsbt(psbtBase64, policy, null);
 
   const hasScript = !!getTaprootScript(psbtBase64);
 
-  const transaction = Transaction.fromPSBT(psbt);
+  const transaction = Transaction.fromPSBT(base64.decode(psbtBase64));
   for (const signature of signatures) {
     const idx = signature[0];
 
@@ -301,12 +302,126 @@ export async function stakingTxPolicy({
 
   const [masterFingerPrint, extendedPublicKey] = await _prepare(transport, derivationPath);
 
-  return new WalletPolicy('Stake / Transfer', 'tr(@0/**)', [
+  return new WalletPolicy('Stake Transfer', 'tr(@0/**)', [
     `[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`,
   ]);
 }
 
-/* Example */
+const SlashingPathRegexPrefix =
+  /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
+const UnbondingPathRegexPrefix = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{64}) OP_CHECKSIG/;
+const TimelockPathRegex = /^([a-f0-9]{64}) OP_CHECKSIGVERIFY ([a-f0-9]{1,4}) OP_CHECKSEQUENCEVERIFY$/;
+
+function tryParseSlashingPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  if (!SlashingPathRegexPrefix.test(script)) {
+    return;
+  }
+
+  const result: string[] = [];
+  decoded.forEach((value) => {
+    if (/^([a-f0-9]{64})$/.test(value)) {
+      result.push(value);
+    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
+      result.push(value);
+    }
+  });
+
+  return result;
+}
+
+function tryParseUnbondingPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  if (!UnbondingPathRegexPrefix.test(script)) {
+    return;
+  }
+
+  const result: string[] = [];
+  decoded.forEach((value) => {
+    if (/^([a-f0-9]{64})$/.test(value)) {
+      result.push(value);
+    } else if (/^OP_([0-9]{1,2})$/.test(value)) {
+      result.push(value);
+    }
+  });
+
+  return result;
+}
+
+function tryParseTimelockPath(decoded: string[]): string[] | undefined {
+  const script = decoded.join(' ');
+
+  const match = script.match(TimelockPathRegex);
+  if (!match) {
+    return;
+  }
+
+  return [match[1], match[2]];
+}
+
+export async function tryParsePsbt(
+  transport: Transport,
+  psbtBase64: string,
+  isTestnet = false,
+  leafHash?: Buffer,
+): Promise<WalletPolicy | undefined> {
+  const derivationPath = `m/86'/${isTestnet ? 1 : 0}'/0'`;
+
+  const script = getTaprootScript(psbtBase64);
+  if (!script) {
+    return stakingTxPolicy({ transport, derivationPath, isTestnet });
+  }
+
+  leafHash = leafHash ? leafHash : computeLeafHash(psbtBase64);
+
+  const decodedScript = Script.decode(script!);
+  let parsed = tryParseSlashingPath(decodedScript);
+  if (parsed) {
+    return slashingPathPolicy({
+      transport,
+      params: {
+        leafHash,
+        finalityProviderPk: parsed[1],
+        covenantPks: parsed.slice(2, parsed.length - 1),
+        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+
+  parsed = tryParseUnbondingPath(decodedScript);
+  if (parsed) {
+    return unbondingPathPolicy({
+      transport,
+      params: {
+        leafHash,
+        covenantPks: parsed.slice(1, parsed.length - 1),
+        covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+
+  parsed = tryParseTimelockPath(decodedScript);
+  if (parsed) {
+    return timelockPathPolicy({
+      transport,
+      params: {
+        leafHash,
+        timelockBlocks: parseInt(parsed[parsed.length - 1], 10),
+      },
+      derivationPath,
+      isTestnet,
+    });
+  }
+}
+
+// /* Example */
+// // Method 1: Explicitly pass all required parameters to construct the policy.
 // async function testStakingStep1() {
 //   const psbt = base64.decode(
 //     'cHNidP8BAH0CAAAAAZUPGfxRcPueN3/UdNQC64mF3lAumoEi9Gv6AgvbdVycAAAAAAD/////AsQJAAAAAAAAFgAUW+EmJNCKK0JAldfAciHDNFDRS/EEpgAAAAAAACJRICyVutUKY9E6qBjfjktoZBga2/RyCoiq+OPBI1ugik2fAAAAAAABAStQwwAAAAAAACJRIEOj7UvRXfRV9er0SUNeReHNqaiqtOoEhmW60JCFUoUyQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCJtgX5iDHD5SbZ6yF5ZRRSk4qMD/f16u7MthJR1dRt6/15ASDcjS+e/wxPTb3gcKSOMw78kItip2ZWjZHmWPKEsyS4eK0gH5MjVzLmTKwzVprRw9vwQTgsO3dPz7BTO5sx1MKna/mtIAruBQmxbbccmZI4pIJ9uUVSaFmxPJVIerRnJTV8mp8lrCARPDoyqdMgtyGQoEoCCg2zl27zaXJnMljpo4o2Tz3DsLogF5Ic8VbMtOc9Qo+ZbtEbJFMT434nyXisTSzCHspGcuS6IDu5PfyLYYh9dx82MOmmPpfLr8/MeFVqR034OjGg74mcuiBAr69HxP+lbehkENjke6ortvBLYE9OokMjc33cP+CS37ogeacf/XHFA+8uL5G8z8j82nlG9GU87w2fPd4geV7zufC6INIfr3jGdRoNOOa9gCi5B/8H6ahppD/IN9az+N/2EZo2uiD1GZ764/KLuCR2Fjp+RYx61EXZv/sGgtENO9sstB+Ojrog+p2ILUX0BgvbgEIYOCjNh1RPHqmXOA5YbKt31f1phze6VpzAARcgUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAAAAA=',
@@ -344,4 +459,16 @@ export async function stakingTxPolicy({
 //   });
 
 //   await signPsbt({ transport, psbt, policy });
+// }
+
+// // Method 2: Automatically parse the policy from the content of the provided PSBT.
+// async function testStakingStep2() {
+//   const psbtBase64 =
+//     'cHNidP8BAH0CAAAAAZUPGfxRcPueN3/UdNQC64mF3lAumoEi9Gv6AgvbdVycAAAAAAD/////AsQJAAAAAAAAFgAUW+EmJNCKK0JAldfAciHDNFDRS/EEpgAAAAAAACJRICyVutUKY9E6qBjfjktoZBga2/RyCoiq+OPBI1ugik2fAAAAAAABAStQwwAAAAAAACJRIEOj7UvRXfRV9er0SUNeReHNqaiqtOoEhmW60JCFUoUyQhXAUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsCJtgX5iDHD5SbZ6yF5ZRRSk4qMD/f16u7MthJR1dRt6/15ASDcjS+e/wxPTb3gcKSOMw78kItip2ZWjZHmWPKEsyS4eK0gH5MjVzLmTKwzVprRw9vwQTgsO3dPz7BTO5sx1MKna/mtIAruBQmxbbccmZI4pIJ9uUVSaFmxPJVIerRnJTV8mp8lrCARPDoyqdMgtyGQoEoCCg2zl27zaXJnMljpo4o2Tz3DsLogF5Ic8VbMtOc9Qo+ZbtEbJFMT434nyXisTSzCHspGcuS6IDu5PfyLYYh9dx82MOmmPpfLr8/MeFVqR034OjGg74mcuiBAr69HxP+lbehkENjke6ortvBLYE9OokMjc33cP+CS37ogeacf/XHFA+8uL5G8z8j82nlG9GU87w2fPd4geV7zufC6INIfr3jGdRoNOOa9gCi5B/8H6ahppD/IN9az+N/2EZo2uiD1GZ764/KLuCR2Fjp+RYx61EXZv/sGgtENO9sstB+Ojrog+p2ILUX0BgvbgEIYOCjNh1RPHqmXOA5YbKt31f1phze6VpzAARcgUJKbdMGgSVS3i0tgNel6XgeKWg8o7JbVR7/ums6AOsAAAAA=';
+
+//   const transport = await getLedgerTransport();
+
+//   const policy = await tryParsePsbt(transport, psbtBase64, true);
+
+//   await signPsbt({ transport, psbt: psbtBase64, policy: policy! });
 // }
