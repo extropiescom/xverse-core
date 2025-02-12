@@ -1,9 +1,9 @@
-import * as crypto from 'crypto';
+import { createHash } from 'crypto';
 import bs58 from 'bs58';
 
 // Double SHA256 hash function
 function hash256(data: Buffer): Buffer {
-  return crypto.createHash('sha256').update(crypto.createHash('sha256').update(data).digest()).digest();
+  return createHash('sha256').update(createHash('sha256').update(data).digest()).digest();
 }
 
 export function createExtendedPubkey(
@@ -36,7 +36,7 @@ export function createExtendedPubkey(
   ]);
 
   // Calculate checksum (double SHA256, first 4 bytes)
-  const checksum = hash256(serialized).slice(0, 4);
+  const checksum = hash256(serialized).subarray(0, 4);
 
   // Append checksum and encode in Base58 using bs58
   const extendedPubkey = bs58.encode(Buffer.concat([serialized, checksum]));
