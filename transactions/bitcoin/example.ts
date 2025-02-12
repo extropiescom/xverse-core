@@ -4,7 +4,9 @@ import Transport from '@ledgerhq/hw-transport';
 import { base64 } from '@scure/base';
 import { Transaction } from '@scure/btc-signer';
 import AppClient, { WalletPolicy } from 'ledger-bitcoin';
-import { createExtendedPubkey, getLeafHash, getTaprootScript } from './utils';
+
+import { getLeafHash, getTaprootScript } from './utils/psbt';
+import { createExtendedPubkey } from './utils/xpub';
 
 enum MagicCode {
   LEAFHASH_DISPLAY_FP = '69846d00',
@@ -375,6 +377,8 @@ export async function tryParsePsbt(
     return stakingTxPolicy({ transport, derivationPath, isTestnet });
   }
 
+  const displayLeafHash = !!leafHash;
+
   leafHash = leafHash ? leafHash : computeLeafHash(psbtBase64);
 
   const decodedScript = Script.decode(script!);
@@ -389,6 +393,7 @@ export async function tryParsePsbt(
         covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
       },
       derivationPath,
+      displayLeafHash,
       isTestnet,
     });
   }
@@ -403,6 +408,7 @@ export async function tryParsePsbt(
         covenantThreshold: parseInt(parsed[parsed.length - 1].slice(3), 10),
       },
       derivationPath,
+      displayLeafHash,
       isTestnet,
     });
   }
@@ -416,6 +422,7 @@ export async function tryParsePsbt(
         timelockBlocks: Number(`0x${parsed[parsed.length - 1]}`),
       },
       derivationPath,
+      displayLeafHash,
       isTestnet,
     });
   }
