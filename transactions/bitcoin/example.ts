@@ -281,12 +281,11 @@ export async function timelockPathPolicy({
   keys.push(`[${derivationPath.replace('m/', `${magicFP}/`)}]${_formatKey(leafHash, isTestnet)}`);
   keys.push(`[${derivationPath.replace('m/', `${masterFingerPrint}/`)}]${extendedPublicKey}`);
 
-  return new WalletPolicy(
-    policyName,
-    // tr(@0/**,and_v(pk_k(staker_pk),older(timelock_blocks)))
-    `tr(@0/**,and_v(pk_k(@1/**),older(${timelockBlocks})))`,
-    keys,
-  );
+  // tr(@0/**,and_v(pk_k(staker_pk),older(timelock_blocks)))
+  const descriptorTemplate = `tr(@0/**,and_v(pk_k(@1/**),older(${timelockBlocks})))`;
+  console.log('-------------------timelockPathPolicy descriptorTemplate-------------------', descriptorTemplate);
+
+  return new WalletPolicy(policyName, descriptorTemplate, keys);
 }
 
 export async function stakingTxPolicy({
@@ -358,7 +357,9 @@ function tryParseTimelockPath(decoded: string[]): string[] | undefined {
     return;
   }
 
-  return [match[1], match[2]];
+  const [_, stakerPK, timelockBlocks] = match;
+
+  return [stakerPK, timelockBlocks.match(/.{2}/g)!.reverse().join('')];
 }
 
 export async function tryParsePsbt(
